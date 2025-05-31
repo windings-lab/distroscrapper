@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os.path
 import sys
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 from bs4 import BeautifulSoup
 from graphviz import Digraph
 
-from util import dump_json, dump_dataclass_to_json, read_json, read_html, split_words
+from util import dump_json, read_json, read_html
 
 headers = httpx.Headers({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0'})
 limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
@@ -31,6 +30,8 @@ def get_html(url: str, cache_name: str):
             sys.exit()
 
         html = response.text
+
+        # Writing html to cache
         with open(cache_file, "wb") as f:
             f.write(response.content)
 
@@ -235,6 +236,8 @@ def fix_based_on(distros: list[Distro]):
         if distro.is_parent:
             continue
 
+        # In parse_distro based_on is str
+        # Here I am converting it to actual distro
         based_on = distro.based_on
         based_on = mapping.get(based_on, based_on)
         based_on = based_on.capitalize() if based_on else None
@@ -256,10 +259,16 @@ def fix_based_on(distros: list[Distro]):
             if it_was_set:
                 break
 
+        # If there are any updates to distrowatch
+        # Check distro_to_fix array
+        # And add string mapping items
+        # Example:
+        # LUbuntu distro has on its website Based on:
+        # with "ubuntu (lts)". But Ubuntu website has only "ubuntu" keyword. SO
+        # Add mapping "ubuntu (lts)" -> "ubuntu" in mapping variable
+        # Check by yourself by removing some entry from mapping
         if not it_was_set:
             distro_to_fix.append(distro)
-
-    test = 1
 
 
 def add_children(distros: list[Distro]):
@@ -369,7 +378,7 @@ def main():
             distro_html = get_html(distro_link, "distros/" + distro_name)
             distro_builders.append(DistroBuilder(distro_name, distro_link, distro_html))
 
-        with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+        with ThreadPoolExecutor(max_workers=os.cpu_count() * 2) as executor:
             distro_builders = list(executor.map(create_distro_parser, distro_builders))
 
         parse_distros(distro_builders, parser_cache_file)
