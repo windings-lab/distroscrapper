@@ -49,9 +49,7 @@ Cache options:
 ## Building binaries
 
 ```
-uv build --os linux --arch x86_64
-or
-uv build --os windows --arch x86_64
+pyinstaller .\distroscrapper.py
 ```
 
 ## Contributing
