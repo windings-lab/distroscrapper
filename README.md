@@ -28,6 +28,8 @@ options:
                         EXPERIMENTAL. Custom graph output format. Read graphviz docs about different formats.
 
 Cache options:
+  --cache-folder CACHE_FOLDER
+                        Custom cache folder. By default it is in current working directory
   --no-parser-cache     Reparse distro htmls. Without requesting to distrowatch
   --no-html-cache       Request new htmls from distrowatch
   --no-image-cache      Request new image icons from distrowatch

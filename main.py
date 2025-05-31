@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import glob
 import os
 from pathlib import Path
 import sys
-from argparse import Namespace
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
@@ -13,15 +11,6 @@ from bs4 import BeautifulSoup
 from graphviz import Digraph
 
 from util import dump_json, read_json, read_html
-
-headers = httpx.Headers({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0'})
-limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
-client = httpx.Client(limits=limits, headers=headers)
-base_url = "https://distrowatch.com/"
-
-query_cache_file = Path("cache") / "query.html"
-parser_cache_file = Path("cache") / "parser_cache.json"
-html_image_folder = Path("cache/distros")
 
 def get_html(url: str, cache_file: Path):
     cache_name = cache_file.name
@@ -39,7 +28,7 @@ def get_html(url: str, cache_file: Path):
 
         html = response.text
 
-        # Writing html to cache
+        # Writing HTML to cache
         with open(cache_file, "wb") as f:
             f.write(response.content)
 
@@ -267,12 +256,12 @@ def fix_based_on(distros: list[Distro]):
             if it_was_set:
                 break
 
-        # If there are any updates to distrowatch
+        # If there are any updates to DistroWatch
         # Check distro_to_fix array
         # And add string mapping items
         # Example:
         # LUbuntu distro has on its website Based on:
-        # with "ubuntu (lts)". But Ubuntu website has only "ubuntu" keyword. SO
+        # with "ubuntu (lts)". But the ubuntu website has only the "ubuntu" keyword. SO
         # Add mapping "ubuntu (lts)" -> "ubuntu" in mapping variable
         # Check by yourself by removing some entry from mapping
         if not it_was_set:
@@ -291,7 +280,7 @@ def add_children(distros: list[Distro]):
             distro.is_leaf = True
 
 
-def create_graph(distros, _args: Namespace):
+def create_graph(distros):
     dot = Digraph(name='Linux Distros')
     dot.attr(splines="ortho", packmode="graph", rankdir="LR", bgcolor="#9E7741")
 
@@ -370,14 +359,14 @@ def create_graph(distros, _args: Namespace):
             else:
                 dot.subgraph(graph)
 
-    out_file = _args.out
-    graph_format = _args.format
-    cleanup = not _args.save_source
-    _args.out.parent.mkdir(parents=True, exist_ok=True)
+    out_file = args.out
+    graph_format = args.format
+    cleanup = not args.save_source
+    args.out.parent.mkdir(parents=True, exist_ok=True)
     dot.render(directory="./", filename="graph_source.gv", outfile=out_file, format=graph_format, view=True, cleanup=cleanup)
 
 
-def main(args: Namespace):
+def main():
     if not parser_cache_file.is_file():
         print("Creating new parser")
         distro_links = create_distro_links()
@@ -417,7 +406,7 @@ def main(args: Namespace):
     fix_based_on(distros)
     add_children(distros)
 
-    create_graph(distros, args)
+    create_graph(distros)
 
     client.close()
 
@@ -458,6 +447,11 @@ if __name__ == "__main__":
 
     cache_group = parser.add_argument_group(title="Cache options")
     cache_group.add_argument(
+        "--cache-folder",
+        help="Custom cache folder. By default it is in current working directory",
+        default="cache",
+    )
+    cache_group.add_argument(
         "--no-parser-cache",
         help="Reparse distro htmls. Without requesting to distrowatch",
         action="store_true",
@@ -484,6 +478,11 @@ if __name__ == "__main__":
 
     args.out = Path(args.out)
 
+    cache_folder = Path(args.cache_folder)
+    query_cache_file = cache_folder / "query.html"
+    parser_cache_file = cache_folder / "parser_cache.json"
+    html_image_folder = cache_folder / Path("distros")
+
     if args.no_parser_cache and parser_cache_file.exists():
         parser_cache_file.unlink()
 
@@ -498,4 +497,9 @@ if __name__ == "__main__":
     if args.update and query_cache_file.exists():
         query_cache_file.unlink()
 
-    main(args)
+    headers = httpx.Headers({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0'})
+    limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
+    client = httpx.Client(limits=limits, headers=headers)
+    base_url = "https://distrowatch.com/"
+
+    main()
