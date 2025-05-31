@@ -4,6 +4,17 @@ Distroscrapper is a Python program for creating linux hierarchy graph.<br>
 1. It scraps data from [distrowatch](https://distrowatch.com/), putting everything in cache to avoid too many requests.
 2. From scrapped data, creates a graph using graphviz
 
+## Demo
+
+<details>
+<summary>Show Image</summary>
+
+<br>
+
+<img src="docs/graph.png" alt="Diagram"/>
+
+</details>
+
 ## Installation
 
 Use the package manager [uv](https://docs.astral.sh/uv/) to install distroscrapper.
