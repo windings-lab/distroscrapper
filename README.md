@@ -44,3 +44,7 @@ uv build --os windows --arch x86_64
 ## Contributing
 
 Pull requests are welcome
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
