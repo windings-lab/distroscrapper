@@ -4,7 +4,8 @@ from dataclasses import asdict
 
 def dump_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
-        json.dump([item.to_dict() for item in data], f, indent=2)
+        data_list = [item.to_dict() for item in data]
+        json.dump(data_list, f, indent=2)
 
 def dump_dataclass_to_json(path, data):
     with open(path, "w", encoding="utf-8") as f:

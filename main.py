@@ -1,7 +1,11 @@
 from __future__ import annotations
 
-import os.path
+import argparse
+import glob
+import os
+from pathlib import Path
 import sys
+from argparse import Namespace
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
@@ -15,10 +19,14 @@ limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
 client = httpx.Client(limits=limits, headers=headers)
 base_url = "https://distrowatch.com/"
 
-def get_html(url: str, cache_name: str):
-    cache_file = "cache/" + cache_name + ".html"
-    os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-    if os.path.isfile(cache_file) and os.path.getsize(cache_file) > 0:
+query_cache_file = Path("cache") / "query.html"
+parser_cache_file = Path("cache") / "parser_cache.json"
+html_image_folder = Path("cache/distros")
+
+def get_html(url: str, cache_file: Path):
+    cache_name = cache_file.name
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    if cache_file.is_file() and cache_file.stat().st_size > 0:
         print(f"Using cached html <{cache_name}>")
         html = read_html(cache_file)
     else:
@@ -40,7 +48,7 @@ def get_html(url: str, cache_name: str):
 
 def create_distro_links():
     query_url = "https://distrowatch.com/search.php?ostype=All&category=All&origin=All&basedon=All&notbasedon=None&desktop=All&architecture=All&package=All&rolling=All&isosize=All&netinstall=All&language=All&defaultinit=All&status=All#advanced"
-    query_html = get_html(query_url, "query")
+    query_html = get_html(query_url, query_cache_file)
     query_parser = BeautifulSoup(query_html, "lxml")
 
     distro_a_tags = query_parser.find_all("td", class_="NewsText")[1].find_all("a")[5:]
@@ -124,7 +132,7 @@ class DistroBuilder:
         self.based_on = based_on
 
     def set_image_file(self, image_file):
-        self.image_file = image_file
+        self.image_file = str(image_file)
 
     def build(self) -> Distro:
         distro = Distro(
@@ -148,14 +156,14 @@ class DistroBuilder:
 
 def create_distro_parser(builder: DistroBuilder):
     print(f"Creating distro parser <{builder.name}>")
-    parser = BeautifulSoup(builder.html, "lxml")
+    _parser = BeautifulSoup(builder.html, "lxml")
 
-    builder.set_parser(parser)
+    builder.set_parser(_parser)
 
     return builder
 
 
-def parse_distros(distro_builders: list[DistroBuilder], json_file: str):
+def parse_distros(distro_builders: list[DistroBuilder]):
     for distro_builder in distro_builders:
         def parse_based_on_and_is_parent():
             table = distro_builder.parser.find("td", class_="TablesTitle")
@@ -169,10 +177,10 @@ def parse_distros(distro_builders: list[DistroBuilder], json_file: str):
 
             return _based_on, _is_parent
         def parse_and_get_image():
-            image_file = "cache/distros/" + distro_builder.name + ".png"
-            if os.path.isfile(image_file):
-                print(f"Using cached image <{image_file}>")
-                return image_file
+            _image_file = (html_image_folder / (distro_builder.name + ".png")).absolute()
+            if _image_file.is_file():
+                print(f"Using cached image <{_image_file}>")
+                return _image_file
 
             print(f"Parsing image for distro <{distro_builder.name}>")
             table_title = distro_builder.parser.find("td", class_="TablesTitle")
@@ -186,10 +194,10 @@ def parse_distros(distro_builders: list[DistroBuilder], json_file: str):
                 print(e)
                 sys.exit()
 
-            with open(image_file, "wb") as f:
+            with open(_image_file, "wb") as f:
                 f.write(response.content)
 
-            return image_file
+            return _image_file
 
         print(f"Parsing <{distro_builder.name}>")
 
@@ -201,7 +209,7 @@ def parse_distros(distro_builders: list[DistroBuilder], json_file: str):
             distro_builder.set_based_on(based_on)
         distro_builder.set_image_file(image_file)
 
-    dump_json(json_file, distro_builders)
+    dump_json(parser_cache_file, distro_builders)
 
 
 mapping = {
@@ -283,7 +291,7 @@ def add_children(distros: list[Distro]):
             distro.is_leaf = True
 
 
-def create_graph(distros):
+def create_graph(distros, _args: Namespace):
     dot = Digraph(name='Linux Distros')
     dot.attr(splines="ortho", packmode="graph", rankdir="LR", bgcolor="#9E7741")
 
@@ -293,26 +301,26 @@ def create_graph(distros):
     def width(connections: int):
         return str(0.75 + 0.05 * connections)
 
-    def create_node_custom_size(graph, distro):
-        connections = len(distro.children)
+    def create_node_custom_size(_graph, _distro):
+        connections = len(_distro.children)
 
-        return graph.node(
-            distro.name,
+        return _graph.node(
+            _distro.name,
             fontsize=font_size(connections),
             width=width(connections),
             height="0.5",
             fixedsize="false",
             shape="box",
-            URL=distro.url,
-            image=distro.image_file,
+            URL=_distro.url,
+            image=_distro.image_file,
         )
 
-    def create_node_fixed_size(graph, distro):
-        return graph.node(
-            distro.name,
+    def create_node_fixed_size(_graph, _distro):
+        return _graph.node(
+            _distro.name,
             shape="box",
-            URL=distro.url,
-            image=distro.image_file,
+            URL=_distro.url,
+            image=_distro.image_file,
         )
 
     for distro in distros:
@@ -322,7 +330,6 @@ def create_graph(distros):
         print(f"Create cluster graph for non-leaf distro {distro.name}")
         distro.graph = Digraph(name=f"cluster_{distro.name}")
         distro.graph.attr(style='rounded', color='red', penwidth='3', label=distro.name)
-
 
     for distro in distros:
         if distro.is_leaf:
@@ -363,25 +370,27 @@ def create_graph(distros):
             else:
                 dot.subgraph(graph)
 
+    out_file = _args.out
+    graph_format = _args.format
+    cleanup = not _args.save_source
+    _args.out.parent.mkdir(parents=True, exist_ok=True)
+    dot.render(directory="./", filename="graph_source.gv", outfile=out_file, format=graph_format, view=True, cleanup=cleanup)
 
-    dot.render('distros_graph', format='pdf', view=True)
 
-
-def main():
-    parser_cache_file = "cache/parser_cache.json"
-    if not os.path.isfile(parser_cache_file):
+def main(args: Namespace):
+    if not parser_cache_file.is_file():
         print("Creating new parser")
         distro_links = create_distro_links()
 
         distro_builders: list[DistroBuilder] = []
         for distro_link, distro_name in distro_links:
-            distro_html = get_html(distro_link, "distros/" + distro_name)
+            distro_html = get_html(distro_link, html_image_folder / (distro_name + ".html"))
             distro_builders.append(DistroBuilder(distro_name, distro_link, distro_html))
 
         with ThreadPoolExecutor(max_workers=os.cpu_count() * 2) as executor:
             distro_builders = list(executor.map(create_distro_parser, distro_builders))
 
-        parse_distros(distro_builders, parser_cache_file)
+        parse_distros(distro_builders)
     else:
         print("Using parser cache")
 
@@ -408,10 +417,85 @@ def main():
     fix_based_on(distros)
     add_children(distros)
 
-    create_graph(distros)
+    create_graph(distros, args)
 
     client.close()
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        prog="Distroscrapper",
+        description="Distroscrapper is a Python program for creating linux hierarchy graph."
+    )
+
+    parser.add_argument(
+        "-o", "--out",
+        help="Output file name. Can be used with directory too",
+        default="distro_graph"
+    )
+    parser.add_argument(
+        "-s", "--save-source",
+        help="Create graphviz source file",
+        action="store_true",
+    )
+    parser.add_argument(
+        "-u", "--update",
+        help="Request new search query from distrowatch and create new htmls if not in cache",
+        action="store_true",
+    )
+
+    exclusive_group = parser.add_mutually_exclusive_group()
+    exclusive_group.add_argument(
+        "-f", "--format",
+        help="Graphviz output format. Default: pdf",
+        choices=["pdf", "png", "svg"],
+        default="pdf",
+    )
+    exclusive_group.add_argument(
+        "-cf", "--custom-format",
+        help="EXPERIMENTAL. Custom graph output format. Read graphviz docs about different formats.",
+    )
+
+    cache_group = parser.add_argument_group(title="Cache options")
+    cache_group.add_argument(
+        "--no-parser-cache",
+        help="Reparse distro htmls. Without requesting to distrowatch",
+        action="store_true",
+    )
+    cache_group.add_argument(
+        "--no-html-cache",
+        help="Request new htmls from distrowatch",
+        action="store_true",
+    )
+    cache_group.add_argument(
+        "--no-image-cache",
+        help="Request new image icons from distrowatch",
+        action="store_true",
+    )
+
+    args = parser.parse_args()
+
+    if args.custom_format:
+        args.format = args.custom_format
+
+    test_out = args.out.split(".")[-1]
+    if not test_out == args.format:
+        args.out = args.out + "." + args.format
+
+    args.out = Path(args.out)
+
+    if args.no_parser_cache and parser_cache_file.exists():
+        parser_cache_file.unlink()
+
+    if args.no_html_cache:
+        for file in html_image_folder.glob("*.html"):
+            file.unlink()
+
+    if args.no_image_cache:
+        for file in html_image_folder.glob("*.png"):
+            file.unlink()
+
+    if args.update and query_cache_file.exists():
+        query_cache_file.unlink()
+
+    main(args)
